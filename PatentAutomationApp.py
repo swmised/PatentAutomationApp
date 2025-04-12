@@ -2,6 +2,7 @@ import os
 import time
 import csv
 import tkinter as tk
+from tkinter import Text
 import traceback
 from tkinter import ttk, messagebox, filedialog, Checkbutton, IntVar, StringVar
 from threading import Thread, Event
@@ -313,6 +314,92 @@ class PatentAutomationApp:
         log_scrollbar = ttk.Scrollbar(self.root, orient=tk.VERTICAL, command=self.log_text.yview)
         log_scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S))
         self.log_text['yscrollcommand'] = log_scrollbar.set
+
+    def create_widgets(self):
+        # Frame for input fields
+        input_frame = ttk.Frame(self.root, padding=10)
+        input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
+
+        # Email input
+        email_label = ttk.Label(input_frame, text="Email:")
+        email_label.grid(row=0, column=0, sticky=tk.W)
+        email_entry = ttk.Entry(input_frame, textvariable=self.email_var, width=30)
+        email_entry.grid(row=0, column=1, sticky=tk.W)
+
+        # Folder selection
+        folder_label = ttk.Label(input_frame, text="Save Folder:")
+        folder_label.grid(row=1, column=0, sticky=tk.W)
+        folder_entry = ttk.Entry(input_frame, textvariable=self.folder_var, width=30)
+        folder_entry.grid(row=1, column=1, sticky=tk.W)
+        folder_button = ttk.Button(input_frame, text="Browse", command=self.browse_folder)
+        folder_button.grid(row=1, column=2, sticky=tk.W)
+
+        # Application Numbers input
+        app_numbers_label = ttk.Label(input_frame, text="Application Numbers (one per line):")
+        app_numbers_label.grid(row=2, column=0, sticky=tk.W)
+        self.application_numbers_text = Text(input_frame, height=5, width=40)
+        self.application_numbers_text.grid(row=2, column=1, columnspan=2, sticky=(tk.W, tk.E))
+
+        # Extra Emails input
+        extra_emails_label = ttk.Label(input_frame, text="Extra Emails (one per line):")
+        extra_emails_label.grid(row=3, column=0, sticky=tk.W)
+        self.extra_emails_text = Text(input_frame, height=3, width=40)
+        self.extra_emails_text.grid(row=3, column=1, columnspan=2, sticky=(tk.W, tk.E))
+
+        # Buttons
+        button_frame = ttk.Frame(self.root, padding=10)
+        button_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
+
+        self.start_button = ttk.Button(button_frame, text="Start", command=self.start_process)
+        self.start_button.grid(row=0, column=0, padx=5, sticky=tk.W)
+
+        self.stop_button = ttk.Button(button_frame, text="Stop", command=self.stop_process, state=tk.DISABLED)
+        self.stop_button.grid(row=0, column=1, padx=5, sticky=tk.W)
+
+        self.column_settings_button = ttk.Button(button_frame, text="Column Settings", command=self.show_column_settings)
+        self.column_settings_button.grid(row=0, column=2, padx=5, sticky=tk.W)
+
+        self.filter_button = ttk.Button(button_frame, text="Filter Settings", command=self.show_filter_settings)
+        self.filter_button.grid(row=0, column=3, padx=5, sticky=tk.W)
+
+        self.generate_filtered_button = ttk.Button(button_frame, text="Generate Filtered Data", command=self.generate_filtered_data, state=tk.DISABLED)
+        self.generate_filtered_button.grid(row=0, column=4, padx=5, sticky=tk.W)
+
+        # Log Text Area
+        self.log_text = Text(self.root, height=10, wrap=tk.WORD)
+        self.log_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.log_text.config(state=tk.DISABLED)
+
+        # Scrollbar for Log Text Area
+        log_scrollbar = ttk.Scrollbar(self.root, orient=tk.VERTICAL, command=self.log_text.yview)
+        log_scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S))
+        self.log_text['yscrollcommand'] = log_scrollbar.set
+
+    def browse_folder(self):
+        folder_selected = filedialog.askdirectory()
+        self.folder_var.set(folder_selected)
+
+    def start_process(self):
+        if not self.running:
+            self.running = True
+            self.start_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.NORMAL)
+            self.generate_filtered_button.config(state=tk.DISABLED) # Disable until data is fetched
+            self.log_message("Starting the automation process...", "INFO")
+            self.current_process = threading.Thread(target=self.run_automation)
+            self.current_process.start()
+        else:
+            self.log_message("Process already running.", "WARNING")
+
+    def stop_process(self):
+        if self.running:
+            self.running = False
+            self.stop_event.set()
+            self.start_button.config(state=tk.NORMAL)
+            self.stop_button.config(state=tk.DISABLED)
+            self.log_message("Stopping the automation process...", "INFO")
+        else:
+            self.log_message("No process is currently running.", "WARNING")
 
     def set_default_values(self):
         """Set default values for email and folder"""
@@ -933,6 +1020,26 @@ class PatentAutomationApp:
 
         cancel_btn = ttk.Button(button_frame, text="Cancel", command=filter_settings_window.destroy)
         cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    def show_column_settings(self):
+        # Placeholder for column settings functionality
+        print("Column Settings Button Clicked")  # Replace with your actual logic
+        # You'll likely want to create a new Toplevel window here to display
+        # the column settings options.  For example:
+        # column_settings_window = tk.Toplevel(self.root)
+        # column_settings_window.title("Column Settings")
+        # ... add your widgets for column settings .
+
+    def run_automation(self):
+        # Placeholder for the patent automation process
+        print("Starting the automation process...")
+        # Add your automation logic here
+        # This could involve reading data, processing it,
+        # generating reports, etc.
+        time.sleep(5)  # Simulate some work being done
+        print("Automation process completed.")
+
+
 
 if __name__ == "__main__":
     root = tk.Tk()
