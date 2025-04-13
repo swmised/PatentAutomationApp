@@ -64,38 +64,48 @@ def render_settings_panel(panel_id):
     config = PANEL_CONFIG[panel_id]
     with st.expander(config["label"], expanded=True):
         st.markdown(f"##### {config['icon']} {config['label']}")
-        
+
         updates = {}
         filter_updates = {}
-        
-        for header in config["headers"]():
+
+        for i, header in enumerate(config["headers"]()):
             sanitized_key = header.replace('/', '_').replace(' ', '_').replace('&', '_')
             col1, col2, col3 = st.columns([1.2, 1, 2])
-            
+
+            # Add column headers only once
+            if i == 0:  # Only for first row
+                with col2:
+                    st.markdown("<b>Condition</b>", unsafe_allow_html=True)
+                with col3:
+                    st.markdown("**Value**")
+
+            # Row content
             with col1:
                 updates[header] = st.checkbox(
                     header,
                     value=st.session_state.column_settings.get(header, False),
-                    key=f"{panel_id}_cb_{sanitized_key}"
+                    key=f"{panel_id}_cb_{sanitized_key}",
                 )
-            
+
             with col2:
                 condition = st.selectbox(
-                    "Condition",
+                    "Condition",  # Hidden label
                     options=["--", "IS", "BLANK", "CONTAINS", "STARTS WITH", "ENDS WITH"],
                     index=0,
-                    key=f"{panel_id}_cond_{sanitized_key}"
+                    key=f"{panel_id}_cond_{sanitized_key}",
+                    label_visibility="collapsed"
                 )
-            
+
             with col3:
                 value = st.text_input(
-                    "Value",
-                    value=st.session_state.filter_settings.get(header, {}).get('value', ''),
-                    key=f"{panel_id}_val_{sanitized_key}"
+                    "Value",  # Hidden label
+                    value=st.session_state.filter_settings.get(header, {}).get('value', ""),
+                    key=f"{panel_id}_val_{sanitized_key}",
+                    label_visibility="collapsed"
                 )
-            
+
             filter_updates[header] = {'condition': condition, 'value': value}
-        
+
         return updates, filter_updates
 
 # ========== CORE FUNCTIONALITY CLASSES ==========
@@ -162,62 +172,64 @@ PANEL_CONFIG = {
 def main():
     st.set_page_config(layout="wide")
     st.title("Patent Information Management System")
-    
+
+    # Increase tab label size
+    st.markdown("""
+    <style>
+    button[data-baseweb="tab"] { font-size: 1.2rem !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
     # ========== INITIALIZE SESSION STATE ==========
     if 'column_settings' not in st.session_state:
         st.session_state.column_settings = load_column_settings()
     if 'filter_settings' not in st.session_state:
         st.session_state.filter_settings = load_filter_settings()
-    
+
     # ========== INPUT FIELDS SECTION ==========
     with st.container():
         st.subheader("Data Input")
         col1, col2 = st.columns(2)
-        
+
         with col1:
             emails = st.text_area("Emails", height=100, 
-                                help="Enter emails (one per line or comma-separated)")
-        
+                                 help="Enter emails (one per line or comma-separated)")
+
         with col2:
             app_nums = st.text_area("Application Numbers", height=100,
                                   help="Enter application numbers (one per line or comma-separated)")
-        
+
         # Save inputs immediately
         save_user_defaults({"emails": emails, "application_numbers": app_nums})
-    
+
     # ========== TABBED PANELS SECTION ==========
     with st.container():
-        st.subheader("Configuration Settings")
-        
-        # Create tabs
-        tab_main, tab_details = st.tabs(["Main Settings", "Details Settings"])
-        
-        # Main Panel
-        with tab_main:
-            panel_updates_main, filter_updates_main = render_settings_panel("main")
-        
-        # Details Panel
-        with tab_details:
-            panel_updates_details, filter_updates_details = render_settings_panel("details")
-        
-        # Combine updates
-        panel_updates = {**panel_updates_main, **panel_updates_details}
-        filter_updates = {**filter_updates_main, **filter_updates_details}
-    
-    # ========== ACTION BUTTONS SECTION ==========
-    with st.container():
-        st.subheader("Actions")
-        col_save, col_reset, _ = st.columns([1, 1, 2])
-        
-        with col_save:
+        col_tabs, col_buttons = st.columns([3, 1])
+        with col_tabs:
+            # Create tabs with larger labels
+            tab_main, tab_details = st.tabs(["📌 MAIN SETTINGS", "📌 DETAILS SETTINGS"])
+
+            # Main Panel
+            with tab_main:
+                panel_updates_main, filter_updates_main = render_settings_panel("main")
+
+            # Details Panel
+            with tab_details:
+                panel_updates_details, filter_updates_details = render_settings_panel("details")
+
+            # Combine updates
+            panel_updates = {**panel_updates_main, **panel_updates_details}
+            filter_updates = {**filter_updates_main, **filter_updates_details}
+
+        with col_buttons:
+            st.write("")  # Vertical spacer
             if st.button("💾 Save Settings", type="primary", use_container_width=True):
                 st.session_state.column_settings.update(panel_updates)
                 st.session_state.filter_settings.update(filter_updates)
                 save_column_settings(st.session_state.column_settings)
                 save_filter_settings(st.session_state.filter_settings)
                 st.toast("Settings saved successfully!", icon="✅")
-        
-        with col_reset:
+
             if st.button("🔄 Reset to Defaults", type="secondary", use_container_width=True):
                 st.session_state.column_settings = {h: True for h in load_default_headers()}
                 st.session_state.filter_settings = {}
