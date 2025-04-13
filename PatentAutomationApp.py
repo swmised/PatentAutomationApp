@@ -118,13 +118,6 @@ def save_user_defaults(data):
     except Exception as e:
         logging.error(f"User defaults save error: {e}")
 
-# ========== PART 1/3 - TOP SECTION ==========
-# (After imports and before classes)
-
-
-# ========== PART 2/3 - MIDDLE SECTION ==========
-# (After helper functions and before main())
-
 # ========== PANEL RENDERING ==========
 def render_settings_panel(panel_id):
     """Render a settings panel with proper UI components"""
@@ -194,19 +187,24 @@ def main():
 
     # ========== SETTINGS PANELS SECTION ==========
     with st.container():
-        st.subheader("Configuration Panels")
-        selected_panel = st.selectbox(
-            "Select Panel:",
-            options=list(PANEL_CONFIG.keys()),
-            format_func=lambda x: PANEL_CONFIG[x]["label"],
-            key="panel_selector"
-        )
+        st.subheader("Configuration Settings")
         
-        if selected_panel in PANEL_CONFIG:
-            panel_updates, filter_updates = render_settings_panel(selected_panel)
-        else:
-            st.warning("Please select a valid configuration panel")
-            panel_updates, filter_updates = {}, {}
+        # Create tabs for each panel
+        tabs = st.tabs([PANEL_CONFIG[panel_id]["label"] for panel_id in PANEL_CONFIG])
+        
+        all_panel_updates = {}
+        all_filter_updates = {}
+
+        # Render each panel in its tab
+        for i, panel_id in enumerate(PANEL_CONFIG):
+            with tabs[i]:
+                updates, filters = render_settings_panel(panel_id)
+                all_panel_updates.update(updates)
+                all_filter_updates.update(filters)
+
+        # Store combined updates
+        panel_updates = all_panel_updates
+        filter_updates = all_filter_updates
 
     # ========== ACTION BUTTONS SECTION ==========
     with st.container():
