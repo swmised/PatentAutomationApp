@@ -118,79 +118,66 @@ def load_default_headers():
 
 # --- Modified load_column_settings Function ---
 def load_column_settings():
+    """Load settings while preserving existing columns"""
     filepath = COLUMN_SETTINGS_FILE
-    default_headers = load_default_headers()  # Get validated headers
+    default_headers = load_default_headers()
     
     try:
-        if not os.path.exists(filepath):
-            # Create with default headers if file doesn't exist
-            settings = {header: True for header in default_headers}
-            pd.DataFrame({'header': list(settings.keys()), 'selected': list(settings.values())})\
-              .set_index('header').to_csv(filepath)
-            logging.info(f"Created new column settings file with default headers")
-            
-        # Load existing file
-        df = pd.read_csv(filepath, index_col=0)
-        return df['selected'].to_dict()
-    
+        if os.path.exists(filepath):
+            df = pd.read_csv(filepath, index_col=0)
+            # Merge existing settings with default headers
+            return {**{h: True for h in default_headers}, **df['selected'].to_dict()}
+        return {h: True for h in default_headers}
     except Exception as e:
-        logging.error(f"Error loading column settings: {e}")
-        settings = {header: True for header in default_headers}
-        return settings
+        return {h: True for h in default_headers}
 
-def save_column_settings(settings):
+
+def save_column_settings(main_settings, detail_settings):
+    """Save settings without overwriting other columns"""
     filepath = COLUMN_SETTINGS_FILE
-    logging.info(f"Saving column settings to: {filepath}")
-    pd.DataFrame({'header': list(settings.keys()), 'selected': list(
-        settings.values())}).set_index('header').to_csv(filepath)
+    try:
+        # Load existing settings
+        existing = pd.read_csv(filepath, index_col=0) if os.path.exists(filepath) else pd.DataFrame()
+        
+        # Update only the relevant sections
+        updated_settings = {**existing.to_dict().get('selected', {}),
+                           **main_settings,
+                           **detail_settings}
+        
+        pd.DataFrame({'selected': updated_settings}).to_csv(filepath)
+        logging.info(f"Saved column settings to {filepath}")
+    except Exception as e:
+        logging.error(f"Error saving column settings: {e}")
 
 
 def load_filter_settings():
+    """Load filter settings with empty defaults"""
     filepath = FILTER_SETTINGS_FILE
-    if os.path.exists(filepath):
-        logging.info(f"Loading filter settings from: {filepath}")
-        try:
+    try:
+        if os.path.exists(filepath):
             df = pd.read_csv(filepath, index_col=0)
-            if 'condition' in df.columns and 'value' in df.columns:
-                settings = {}
-                for index, row in df.iterrows():
-                    settings[index] = {
-                        'condition': row['condition'], 'value': row['value']}
-                return settings
-            else:
-                default_headers = load_default_headers()
-                filter_options = ["--", "IS", "BLANK",
-                                  "CONTAINS", "STARTS WITH", "ENDS WITH"]
-                return {header: {'condition': "--", 'value': ""} for header in default_headers}
-        except Exception as e:
-            logging.error(
-                f"Error loading filter settings from {filepath}: {e}")
-            default_headers = load_default_headers()
-            filter_options = ["--", "IS", "BLANK",
-                              "CONTAINS", "STARTS WITH", "ENDS WITH"]
-            return {header: {'condition': "--", 'value': ""} for header in default_headers}
-    else:
-        logging.info(
-            f"Filter settings file not found at: {filepath}. Creating default.")
-        default_headers = load_default_headers()
-        filter_options = ["--", "IS", "BLANK",
-                          "CONTAINS", "STARTS WITH", "ENDS WITH"]
-        settings = {header: {'condition': "--", 'value': ""}
-                    for header in default_headers}
-        df = pd.DataFrame.from_dict(settings, orient='index')
-        df.index.name = 'header'
-        df['value'] = df['value'].astype(str)
-        df.to_csv(filepath)
-        logging.info(f"Default filter settings saved to: {filepath}")
-        return settings
+            return df.to_dict(orient='index')
+        return {}
+    except Exception as e:
+        return {}
 
 
-def save_filter_settings(settings):
+def save_filter_settings(main_filters, detail_filters):
+    """Save filter settings without overwriting other columns"""
     filepath = FILTER_SETTINGS_FILE
-    logging.info(f"Saving filter settings to: {filepath}")
-    df = pd.DataFrame.from_dict(settings, orient='index')
-    df.index.name = 'header'
-    df.to_csv(filepath)
+    try:
+        # Load existing settings
+        existing = pd.read_csv(filepath, index_col=0) if os.path.exists(filepath) else pd.DataFrame()
+        
+        # Update only the relevant sections
+        updated_filters = {**existing.to_dict(orient='index'),
+                          **main_filters,
+                          **detail_filters}
+        
+        pd.DataFrame.from_dict(updated_filters, orient='index').to_csv(filepath)
+        logging.info(f"Saved filter settings to {filepath}")
+    except Exception as e:
+        logging.error(f"Error saving filter settings: {e}")
 
 
 def load_user_defaults():
@@ -339,18 +326,152 @@ user_data_to_save = {"emails": st.session_state.get("emails_input", user_default
                      "application_numbers": st.session_state.get("app_nums_input", user_defaults["application_numbers"])}
 save_user_defaults(user_data_to_save)
 
-# --- Filtering Panels ---
-st.subheader("Filter Settings")
-col_show_main, col_show_detail, col_reset_filters = st.columns([1, 1, 1])
+# Initialize session state for settings
+if 'column_settings' not in st.session_state:
+    st.session_state.column_settings = load_column_settings()
+if 'filter_settings' not in st.session_state:
+    st.session_state.filter_settings = load_filter_settings()
 
+# --- Modified Settings Panels ---
+main_updates = {}
+detail_updates = {}
+filter_main_updates = {}
+filter_detail_updates = {}
+
+
+# --- Filtering Panels Section ---
+st.subheader("Filter Settings")
+
+# Initialize session state keys
+if 'toggle_main_settings' not in st.session_state:
+    st.session_state.toggle_main_settings = False
+if 'toggle_detail_settings' not in st.session_state:
+    st.session_state.toggle_detail_settings = False
+
+def handle_panel_toggles():
+    """Callback to manage mutually exclusive panels"""
+    # Get which button was last clicked
+    if st.session_state.get('toggle_main_btn'):
+        st.session_state.toggle_main_settings = st.session_state.toggle_main_btn
+        st.session_state.toggle_detail_settings = False
+    elif st.session_state.get('toggle_detail_btn'):
+        st.session_state.toggle_detail_settings = st.session_state.toggle_detail_btn
+        st.session_state.toggle_main_settings = False
+
+# Create checkboxes with separate widget keys
+col_show_main, col_show_detail, col_reset_filters = st.columns([1, 1, 1])
 with col_show_main:
-    st.checkbox(":blue[Show MAIN Settings]",
-                key="toggle_main_settings", value=False)
+    st.checkbox(
+        "📋 Show MAIN Settings",
+        key="toggle_main_btn",
+        value=st.session_state.toggle_main_settings,
+        on_change=handle_panel_toggles,
+        help="Display main filtering options"
+    )
 
 with col_show_detail:
-    st.checkbox("Show DETAILS settings",
-                key="toggle_detail_settings", value=True)
+    st.checkbox(
+        "📑 Show DETAILS Settings",
+        key="toggle_detail_btn",
+        value=st.session_state.toggle_detail_settings,
+        on_change=handle_panel_toggles,
+        help="Display advanced detail options"
+    )
 
+# Panel display logic
+if st.session_state.toggle_main_settings:
+    with st.expander("MAIN FILTER SETTINGS", expanded=True):
+        main_updates = {}
+        filter_main_updates = {}
+        
+        for header in [h for h in st.session_state.column_settings if not h.endswith('_AD')]:
+            with st.container():
+                sanitized_key = header.replace('/', '_').replace(' ', '_').replace('&', '_')
+                col1, col2, col3 = st.columns([1.2, 1, 2])
+                
+                with col1:
+                    main_updates[header] = st.checkbox(
+                        header, 
+                        value=st.session_state.column_settings.get(header, False),
+                        key=f"main_checkbox_{sanitized_key}"
+                    )
+                
+                with col2:
+                    condition = st.selectbox(
+                        "Condition", 
+                        options=["--", "IS", "BLANK", "CONTAINS", "STARTS WITH", "ENDS WITH"],
+                        index=0,
+                        key=f"main_condition_{sanitized_key}"
+                    )
+                
+                with col3:
+                    value = st.text_input(
+                        "Value", 
+                        value=st.session_state.filter_settings.get(header, {}).get('value', ''),
+                        key=f"main_value_{sanitized_key}"
+                    )
+                
+                filter_main_updates[header] = {'condition': condition, 'value': value}
+
+elif st.session_state.toggle_detail_settings:
+    with st.expander("DETAILS FILTER SETTINGS", expanded=True):
+        detail_updates = {}
+        filter_detail_updates = {}
+        
+        for header in [h for h in st.session_state.column_settings if h.endswith('_AD')]:
+            with st.container():
+                base_header = header.replace('_AD', '')
+                sanitized_key = base_header.replace('/', '_').replace(' ', '_').replace('&', '_')
+                
+                col1, col2, col3 = st.columns([1.2, 1, 2])
+                
+                with col1:
+                    detail_updates[header] = st.checkbox(
+                        header, 
+                        value=st.session_state.column_settings.get(header, False),
+                        key=f"detail_checkbox_{sanitized_key}"
+                    )
+                
+                with col2:
+                    condition = st.selectbox(
+                        "Condition", 
+                        options=["--", "IS", "BLANK", "CONTAINS", "STARTS WITH", "ENDS WITH"],
+                        index=0,
+                        key=f"detail_condition_{sanitized_key}"
+                    )
+                
+                with col3:
+                    value = st.text_input(
+                        "Value", 
+                        value=st.session_state.filter_settings.get(header, {}).get('value', ''),
+                        key=f"detail_value_{sanitized_key}"
+                    )
+                
+                filter_detail_updates[header] = {'condition': condition, 'value': value}
+
+else:
+    st.write("ℹ️ Select either MAIN or DETAILS settings above to configure filters")
+
+# Save button (appears only when a panel is active)
+if st.session_state.toggle_main_settings or st.session_state.toggle_detail_settings:
+    if st.button("💾 Save Current Settings", type="primary", use_container_width=True):
+        # Update session state
+        if st.session_state.toggle_main_settings:
+            st.session_state.column_settings.update(main_updates)
+            st.session_state.filter_settings.update(filter_main_updates)
+        else:
+            st.session_state.column_settings.update(detail_updates)
+            st.session_state.filter_settings.update(filter_detail_updates)
+        
+        # Save to files
+        pd.DataFrame.from_dict({'selected': st.session_state.column_settings}, orient='index') \
+                   .to_csv(COLUMN_SETTINGS_FILE)
+        pd.DataFrame.from_dict(st.session_state.filter_settings, orient='index') \
+                   .to_csv(FILTER_SETTINGS_FILE)
+        
+        st.toast("Settings saved successfully!", icon="✅")
+        st.rerun()
+        
 with col_reset_filters:
     if st.button(":orange[Reset Filters]", use_container_width=True):
         # Reset GUI filter entries
@@ -372,115 +493,21 @@ with col_reset_filters:
 
         st.rerun()
 
-if st.session_state['toggle_main_settings']:
-    with st.container():
-        st.subheader(":blue[MAIN Settings]")
-        updated_main_column_settings = {}
-        updated_main_filter_settings = {}
-        for header in main_headers:
-            with st.container():
-                col1, col2, col3 = st.columns([1.2, 1, 2])
-                with col1:
-                    selected = st.checkbox(header, value=column_settings.get(
-                        header, False), key=f"main_checkbox_{header}")
-                    updated_main_column_settings[header] = selected
-                with col2:
-                    condition_options = ["--", "IS", "BLANK",
-                                         "CONTAINS", "STARTS WITH", "ENDS WITH"]
-                    default_index = condition_options.index(st.session_state.get(f"main_condition_{header}", filter_settings.get(header, {}).get(
-                        'condition', "--"))) if st.session_state.get(f"main_condition_{header}", filter_settings.get(header, {}).get('condition', "--")) in condition_options else 0
-                    condition = st.selectbox("Condition", condition_options, index=default_index,
-                                             key=f"main_condition_{header}", label_visibility="collapsed")
-                    updated_main_filter_settings[header] = {'condition': condition, 'value': st.session_state.get(
-                        f"main_value_{header}", filter_settings.get(header, {}).get('value', ""))}
-                with col3:
-                    value = st.text_input("Value", value=st.session_state.get(f"main_value_{header}", filter_settings.get(
-                        header, {}).get('value', "")), key=f"main_value_{header}", label_visibility="collapsed")
-                    updated_main_filter_settings[header]['value'] = value
-                    if value != filter_settings.get(header, {}).get('value', ""):
-                        settings_changed = True
-                if updated_main_column_settings.get(header, False) != column_settings.get(header, False) or updated_main_filter_settings.get(header, {}) != filter_settings.get(header, {}):
-                    settings_changed = True
-        if settings_changed:
-            save_column_settings(updated_main_column_settings)
-            save_filter_settings(updated_main_filter_settings)
-            # Update the in-memory settings as well to reflect changes immediately
-            column_settings.update(updated_main_column_settings)
-            filter_settings.update(updated_main_filter_settings)
-            settings_changed = False  # Reset the flag
-
-if st.session_state['toggle_detail_settings']:
-    # st.write(":red[DEBUG: Details panel activated]")  # Debug line
-    # st.write(f":red[Detail headers: {detail_headers}]")  # Debug line
-    with st.container():
-        st.subheader(":yellow[DETAILS Settings]")
-        updated_detail_column_settings = {}
-        updated_detail_filter_settings = {}
-        for header in detail_headers:
-            with st.container():
-                col1, col2, col3 = st.columns([1.2, 1, 2])
-                with col1:
-                    selected = st.checkbox(header, value=column_settings.get(
-                        header, False), key=f"detail_checkbox_{header}")
-                    updated_detail_column_settings[header] = selected
-                with col2:
-                    condition_options = ["--", "IS", "BLANK",
-                                         "CONTAINS", "STARTS WITH", "ENDS WITH"]
-                    default_index = condition_options.index(st.session_state.get(f"detail_condition_{header}", filter_settings.get(header, {}).get(
-                        'condition', "--"))) if st.session_state.get(f"detail_condition_{header}", filter_settings.get(header, {}).get('condition', "--")) in condition_options else 0
-                    condition = st.selectbox("Condition", condition_options, index=default_index,
-                                             key=f"detail_condition_{header}", label_visibility="collapsed")
-                    updated_detail_filter_settings[header] = {'condition': condition, 'value': st.session_state.get(
-                        f"detail_value_{header}", filter_settings.get(header, {}).get('value', ""))}
-                with col3:
-                    value = st.text_input("Value", value=st.session_state.get(f"detail_value_{header}", filter_settings.get(
-                        header, {}).get('value', "")), key=f"detail_value_{header}", label_visibility="collapsed")
-                    updated_detail_filter_settings[header]['value'] = value
-                    if value != filter_settings.get(header, {}).get('value', ""):
-                        settings_changed = True
-                if updated_detail_column_settings.get(header, False) != column_settings.get(header, False) or updated_detail_filter_settings.get(header, {}) != filter_settings.get(header, {}):
-                    settings_changed = True
-        if settings_changed:
-            save_column_settings(updated_detail_column_settings)
-            save_filter_settings(updated_detail_filter_settings)
-            # Update the in-memory settings as well to reflect changes immediately
-            column_settings.update(updated_detail_column_settings)
-            filter_settings.update(updated_detail_filter_settings)
-            settings_changed = False  # Reset the flag
-
-# Main area for processing (replace with your actual online retrieval logic)
-st.subheader("Retrieve Information")
-progress_area = st.empty()
-if st.button("Retrieve Data"):
-    with progress_area:
-        st.info("Preparing for online data retrieval...")
-
-    emails_to_process = [e.strip() for e in st.session_state.get(
-        "emails_input", "").replace(",", "\n").splitlines() if e.strip()]
-    app_numbers_to_process = [n.strip() for n in st.session_state.get(
-        "app_nums_input", "").replace(",", "\n").splitlines() if n.strip()]
-
-    if emails_to_process:
-        st.subheader("Retrieving Data for Emails:")
-        for email in emails_to_process:
-            with st.spinner(f"Retrieving data for: {email}"):
-                # Replace this with your actual online retrieval function for emails
-                retrieved_data = retrieve_online_data(email, data_type="email")
-                # Display retrieved data
-                st.write(f"Data for {email}:", retrieved_data)
-
-    if app_numbers_to_process:
-        st.subheader("Retrieving Data for Application Numbers:")
-        for app_num in app_numbers_to_process:
-            with st.spinner(f"Retrieving data for: {app_num}"):
-                # Replace this with your actual online retrieval function for application numbers
-                retrieved_data = retrieve_online_data(
-                    app_num, data_type="application_number")
-                # Display retrieved data
-                st.write(f"Data for {app_num}:", retrieved_data)
-
-    with progress_area:
-        st.success("Online data retrieval initiated!")
+# --- Add Submit Button at Bottom of Filter Panels ---
+if st.button("💾 Save All Settings", use_container_width=True):
+    with st.spinner("Saving settings..."):
+        try:
+            # Save column settings
+            save_column_settings(main_updates, detail_updates)
+            
+            # Save filter settings
+            save_filter_settings(filter_main_updates, filter_detail_updates)
+            
+            st.toast("Settings saved successfully!", icon="✅")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error saving settings: {str(e)}")
+            
 
 # Progress/Log Area at the bottom
 log_text_area = st.text_area("Log Messages", height=150, disabled=True)
