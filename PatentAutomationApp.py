@@ -6,66 +6,6 @@ import json
 from docx import Document
 import re
 
-# ========== CONSTANTS AND CONFIGURATION ==========
-CONFIG_FOLDER = "config"
-COLUMN_SETTINGS_FILE = os.path.join(CONFIG_FOLDER, "patent_column_settings.csv")
-FILTER_SETTINGS_FILE = os.path.join(CONFIG_FOLDER, "patent_filter_settings.csv")
-DEFAULT_HEADERS_FILE = os.path.join(CONFIG_FOLDER, "patent_headers_default.csv")
-USER_DEFAULTS_FILE = os.path.join(CONFIG_FOLDER, "patent_user_default.csv")
-
-PANEL_CONFIG = {
-    "main": {
-        "label": "📋 Main Settings",
-        "headers": lambda: [h for h in st.session_state.column_settings if not h.endswith('_AD')],
-        "icon": "⚙️"
-    },
-    "details": {
-        "label": "📑 Details Settings",
-        "headers": lambda: [h for h in st.session_state.column_settings if h.endswith('_AD')],
-        "icon": "🔍"
-    }
-}
-
-# ========== CORE FUNCTIONALITY CLASSES ==========
-class PatentProcessor:
-    def __init__(self, text):
-        self.text = text
-
-    def clean_text(self, text):
-        return ' '.join(text.split()).strip()
-
-    def extract_inventors(self):
-        match = re.search(r"(?:Inventor(?:s)?):\s*(.+?)(?:\n|<span)", self.text, re.IGNORECASE|re.MULTILINE)
-        return [self.clean_text(n.strip()) for n in match.group(1).split(',')] if match else []
-
-    def extract_title(self):
-        match = re.search(r"(?:Title):\s*(.+?)(?:\n|<span)", self.text, re.IGNORECASE|re.MULTILINE)
-        return self.clean_text(match.group(1)) if match else "No Title Found"
-
-    def extract_abstract(self):
-        match = re.search(r"(?:Abstract):\s*(.+?)(?:\n(?:Claims:|Description:))", self.text, re.IGNORECASE|re.MULTILINE|re.DOTALL)
-        return self.clean_text(match.group(1)) if match else "No Abstract Found"
-
-    def extract_claims(self):
-        match = re.search(r"Claims:(.+?)(?:\nDescription:)", self.text, re.IGNORECASE|re.MULTILINE|re.DOTALL)
-        if match:
-            claims = re.split(r"\n*\d+\.\s*|\n*and\s*\d+\.\s*", match.group(1).strip())
-            return [self.clean_text(c) for c in claims if c.strip()]
-        return []
-
-    def extract_description(self):
-        match = re.search(r"Description:(.+)", self.text, re.IGNORECASE|re.MULTILINE|re.DOTALL)
-        return match.group(1).strip() if match else "No Description Found"
-
-    def analyze(self):
-        return {
-            "Title": self.extract_title(),
-            "Inventors": self.extract_inventors(),
-            "Abstract": self.extract_abstract(),
-            "Claims": self.extract_claims(),
-            "Description": self.extract_description()
-        }
-
 # ========== SETTINGS MANAGEMENT FUNCTIONS ==========
 def load_default_headers():
     default_headers = ["Title", "Inventors", "Abstract", "Claims", "Description"]
@@ -158,6 +98,66 @@ def render_settings_panel(panel_id):
         
         return updates, filter_updates
 
+# ========== CORE FUNCTIONALITY CLASSES ==========
+class PatentProcessor:
+    def __init__(self, text):
+        self.text = text
+
+    def clean_text(self, text):
+        return ' '.join(text.split()).strip()
+
+    def extract_inventors(self):
+        match = re.search(r"(?:Inventor(?:s)?):\s*(.+?)(?:\n|<span)", self.text, re.IGNORECASE|re.MULTILINE)
+        return [self.clean_text(n.strip()) for n in match.group(1).split(',')] if match else []
+
+    def extract_title(self):
+        match = re.search(r"(?:Title):\s*(.+?)(?:\n|<span)", self.text, re.IGNORECASE|re.MULTILINE)
+        return self.clean_text(match.group(1)) if match else "No Title Found"
+
+    def extract_abstract(self):
+        match = re.search(r"(?:Abstract):\s*(.+?)(?:\n(?:Claims:|Description:))", self.text, re.IGNORECASE|re.MULTILINE|re.DOTALL)
+        return self.clean_text(match.group(1)) if match else "No Abstract Found"
+
+    def extract_claims(self):
+        match = re.search(r"Claims:(.+?)(?:\nDescription:)", self.text, re.IGNORECASE|re.MULTILINE|re.DOTALL)
+        if match:
+            claims = re.split(r"\n*\d+\.\s*|\n*and\s*\d+\.\s*", match.group(1).strip())
+            return [self.clean_text(c) for c in claims if c.strip()]
+        return []
+
+    def extract_description(self):
+        match = re.search(r"Description:(.+)", self.text, re.IGNORECASE|re.MULTILINE|re.DOTALL)
+        return match.group(1).strip() if match else "No Description Found"
+
+    def analyze(self):
+        return {
+            "Title": self.extract_title(),
+            "Inventors": self.extract_inventors(),
+            "Abstract": self.extract_abstract(),
+            "Claims": self.extract_claims(),
+            "Description": self.extract_description()
+        }
+
+# ========== CONSTANTS AND CONFIGURATION ==========
+CONFIG_FOLDER = "config"
+COLUMN_SETTINGS_FILE = os.path.join(CONFIG_FOLDER, "patent_column_settings.csv")
+FILTER_SETTINGS_FILE = os.path.join(CONFIG_FOLDER, "patent_filter_settings.csv")
+DEFAULT_HEADERS_FILE = os.path.join(CONFIG_FOLDER, "patent_headers_default.csv")
+USER_DEFAULTS_FILE = os.path.join(CONFIG_FOLDER, "patent_user_default.csv")
+
+PANEL_CONFIG = {
+    "main": {
+        "label": "📋 Main Settings",
+        "headers": lambda: [h for h in st.session_state.column_settings if not h.endswith('_AD')],
+        "icon": "⚙️"
+    },
+    "details": {
+        "label": "📑 Details Settings",
+        "headers": lambda: [h for h in st.session_state.column_settings if h.endswith('_AD')],
+        "icon": "🔍"
+    }
+}
+
 # ========== MAIN APPLICATION ==========
 def main():
     st.set_page_config(layout="wide")
@@ -184,28 +184,26 @@ def main():
         
         # Save inputs immediately
         save_user_defaults({"emails": emails, "application_numbers": app_nums})
-
-    # ========== SETTINGS PANELS SECTION ==========
+    
+    # ========== TABBED PANELS SECTION ==========
     with st.container():
         st.subheader("Configuration Settings")
         
-        # Create tabs for each panel
-        tabs = st.tabs([PANEL_CONFIG[panel_id]["label"] for panel_id in PANEL_CONFIG])
+        # Create tabs
+        tab_main, tab_details = st.tabs(["Main Settings", "Details Settings"])
         
-        all_panel_updates = {}
-        all_filter_updates = {}
-
-        # Render each panel in its tab
-        for i, panel_id in enumerate(PANEL_CONFIG):
-            with tabs[i]:
-                updates, filters = render_settings_panel(panel_id)
-                all_panel_updates.update(updates)
-                all_filter_updates.update(filters)
-
-        # Store combined updates
-        panel_updates = all_panel_updates
-        filter_updates = all_filter_updates
-
+        # Main Panel
+        with tab_main:
+            panel_updates_main, filter_updates_main = render_settings_panel("main")
+        
+        # Details Panel
+        with tab_details:
+            panel_updates_details, filter_updates_details = render_settings_panel("details")
+        
+        # Combine updates
+        panel_updates = {**panel_updates_main, **panel_updates_details}
+        filter_updates = {**filter_updates_main, **filter_updates_details}
+    
     # ========== ACTION BUTTONS SECTION ==========
     with st.container():
         st.subheader("Actions")
@@ -226,9 +224,6 @@ def main():
                 save_column_settings(st.session_state.column_settings)
                 save_filter_settings(st.session_state.filter_settings)
                 st.rerun()
-
-    # ========== DATA PROCESSING SECTION ==========
-    # ... (keep your existing processing logic) ...
 
 if __name__ == "__main__":
     main()
