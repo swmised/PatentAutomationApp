@@ -46,13 +46,16 @@ class PatentAutomationApp:
         self.csv_data = []
         self.current_process = None
 
-        # Add variable for application numbers text widget
-        self.app_numbers_text = None  # Will be initialized in setup_ui
+        self.column_vars = {}      # Add this
+        self.ad_column_vars = {}   # Add this
+        self.filter_settings = {}  # Add this
+		
+        self.email_var = tk.StringVar()
+        self.folder_var = tk.StringVar()
 
-        # Column selection variables
-        self.column_vars = {}  # For basic columns
-        self.ad_column_vars = {}  # For application detail columns
-        self.filter_settings = {}  # For filter settings
+        # Initialize UI components FIRST
+        self.initialize_styles()
+        self.setup_ui()
 
         # Retrieve headers from CSV file
         self.retrieve_headers_from_csv()
@@ -60,35 +63,88 @@ class PatentAutomationApp:
         # Retrieve filter settings from CSV file
         self.retrieve_filter_settings()
 
-        self.log_panel = SlidingLogPanel(self.root)
-        root.bind('<Configure>', self.on_window_resize)
-
         # Initialize column selection variables for default headers
         for header in self.table_headers:
             self.column_vars[header] = IntVar(value=1)  # Default to selected
         for header in self.ad_headers:
             self.column_vars[header] = IntVar(value=1)  # Default to selected
 
-        # Initialize Tkinter variables
-        self.email_var = tk.StringVar()
-        self.folder_var = tk.StringVar()
-        self.extra_emails_var = tk.StringVar()
-
-        # Setup UI components
-        self.setup_ui()
-
-        # Attempt to load user settings
-        self.load_user_settings()
-
         # Set default values if settings were not loaded
         if not hasattr(self, 'settings_loaded') or not self.settings_loaded:
             self.set_default_values()
+    def initialize_styles(self):
+        """Initialize custom UI styles"""
+        self.style = ttk.Style()
+        self.style.configure('LogToggle.TButton', 
+                            font=('Segoe UI', 9, 'bold'),
+                            foreground='#444444')
+        self.style.configure('TButton', padding=6)
 
-    def log_message(self, message, level="INFO"):
-        self.log_panel.log(message, level)  # This is correct
+    def setup_ui(self):
+        self.root.title("Patent Automation Suite v3.6 (Edge)")
+        self.root.geometry("1000x800")
+        self.root.resizable(True, True)
+
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Create log panel FIRST
+        self.log_panel = SlidingLogPanel(self.root)
+
+        # Then build other components
+        self.build_configuration_section(main_frame)
+
+        # Control Buttons
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=10)
+
+        # Fetch applications button
+        self.fetch_applications_btn = ttk.Button(
+            btn_frame, text="Fetch applications", command=self.start_processing, style="Fetch.TButton")
+        self.fetch_applications_btn.pack(side=tk.LEFT, padx=5)
+
+        # Generate Filtered Data button
+        self.generate_filtered_data_btn = ttk.Button(
+            btn_frame, text="Generate Filtered Data", command=self.generate_filtered_data, style="Generate.TButton")
+        self.generate_filtered_data_btn.pack(side=tk.LEFT, padx=5)
+
+        # Reset to Default Settings button
+        self.reset_btn = ttk.Button(main_frame, text="Reset to Default Settings",
+                                    command=self.reset_to_default, style="Reset.TButton")
+        self.reset_btn.pack(pady=5)
+
+        # Exit button
+        self.exit_btn = ttk.Button(
+            main_frame, text="Exit", command=self.stop_process, style="Exit.TButton")
+        self.exit_btn.pack(pady=5)
+
+        # Log Console
+        log_frame = ttk.LabelFrame(main_frame, text="Execution Log")
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        self.log_text = tk.Text(log_frame, wrap=tk.WORD,
+                                state=tk.DISABLED, font=('Consolas', 10))
+        scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+        # Configure log tags
+        self.log_text.tag_config("STATUS", foreground="blue")
+        self.log_text.tag_config("SUCCESS", foreground="green")
+        self.log_text.tag_config("WARNING", foreground="orange")
+        self.log_text.tag_config("ERROR", foreground="red")
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def log_message(self, message, level="info"):
         """Add message to log console with timestamp"""
-        timestamp = datetime.now().strftime("[%H:%M:%S] ")
-        self.root.after(0, lambda: self._update_log(timestamp + message, tag))
+        if hasattr(self, 'log_panel'):
+            self.log_panel.log(message, level)
+        else:
+            # Fallback for early initialization messages
+            print(f"[FALLBACK LOG] {message}")
 
     def retrieve_headers_from_csv(self):
         """Retrieve headers from the patent_headers_default.csv file"""
